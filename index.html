@@ -160,6 +160,23 @@ html,body{background:var(--row)}
 .hbar .back+h1{font-size:19px}
 .editor .bar{position:sticky;top:0;z-index:4;background:var(--row);margin:0 -16px;padding:2px 8px 2px 12px}
 .editor .chip{padding:6px 0 10px}
+
+.trow{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.editor .trow input{margin:0;flex:1;width:auto;min-width:0}
+.av.big{width:44px;height:44px;font-size:22px;border:0;transition:transform .15s}
+.av.big:active{transform:scale(.92)}
+.emo{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;padding:0 12px 8px}
+.emo button{height:46px;font-size:26px;border-radius:12px;transition:background .2s}
+.emo button:active{background:rgba(128,128,128,.2)}
+.row.t{align-items:flex-start;gap:2px;margin:6px 0}
+.tw{flex:1;min-width:0;overflow-x:auto;touch-action:pan-x;border:.5px solid var(--sep);border-radius:10px;scrollbar-width:none}
+.tw::-webkit-scrollbar{display:none}
+.tw table{border-collapse:collapse;min-width:100%}
+.tw td{border:.5px solid var(--sep);padding:0;min-width:104px}
+.editor .tw input{font:inherit;font-size:16px;font-weight:400;margin:0;padding:10px;width:100%;min-width:0}
+.tw tr:first-child input{font-weight:600}
+.tools{gap:6px;padding-left:10px;padding-right:10px}
+.tools button{font-size:14px}
 </style>
 </head>
 <body>
@@ -210,14 +227,17 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,5);
 const hap = (t='light') => tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred(t);
-const noteJson = n => JSON.stringify({f:n.folder,t:n.title,x:n.text,d:n.ts,p:n.pin?1:0,r:n.del||0});
+const noteJson = n => JSON.stringify({f:n.folder,t:n.title,x:n.text,d:n.ts,p:n.pin?1:0,r:n.del||0,a:n.ico||'',c:n.col||''});
 const saveNote = n => store.set('n_'+n.id, noteJson(n));
 const saveFolders = () => store.set('folders', JSON.stringify(S.folders));
 const folderOf = id => S.folders.find(f => f.id === id);
 const isLocked = n => { const f = folderOf(n.folder); return !!(f && f.lock); };
 const live = () => S.notes.filter(n => !n.del);
 const visible = () => live().filter(n => !isLocked(n));
-const plain = x => x.replace(/^(- \[[ x]\] |# |• )/gm,'').replace(/\n+/g,' ').trim();
+const plain = x => x.replace(/^\| (.*) \|$/gm,(m,a) => a.replace(/ \| /g,' · ')).replace(/^(- \[[ x]\] |# |• )/gm,'').replace(/\n+/g,' ').trim();
+const defCol = n => { const f = folderOf(n.folder); return f ? f.color : COLORS[(n.id.charCodeAt(n.id.length-1) || 0) % COLORS.length]; };
+const avCol = n => n.col || defCol(n);
+const avCh = n => n.ico || ((n.title || plain(n.text)).match(/[A-Za-zА-Яа-яЁё0-9]/) || ['•'])[0].toUpperCase();
 const I_PIN = '<svg viewBox="0 0 24 24"><path d="M9 4h6l-1 6 3 3H7l3-3zM12 13v7"/></svg>';
 const I_TRASH = '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-12M9 7V4h6v3"/></svg>';
 const I_LOCK = '<svg class="lk" viewBox="0 0 24 24"><path d="M7 10V8a5 5 0 0 1 10 0v2h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zm2 0h6V8a3 3 0 0 0-6 0z"/></svg>';
@@ -232,7 +252,7 @@ function fmt(ts){
 }
 
 function parseNote(k, v){
-  try { const o = JSON.parse(v); return { id:k.slice(2), folder:o.f||null, title:o.t||'', text:o.x||'', ts:o.d||0, pin:!!o.p, del:o.r||0 } } catch(e){ return null }
+  try { const o = JSON.parse(v); return { id:k.slice(2), folder:o.f||null, title:o.t||'', text:o.x||'', ts:o.d||0, pin:!!o.p, del:o.r||0, ico:o.a||'', col:o.c||'' } } catch(e){ return null }
 }
 function loadLocal(){
   try { S.folders = JSON.parse(ls.get('folders') || '[]') } catch(e){ S.folders = [] }
@@ -315,8 +335,7 @@ function rowsHtml(arr, sf, trash, flat){
     const f = sf && n.folder ? folderOf(n.folder) : null;
     const text = plain(n.text), title = n.title || text.slice(0,60) || 'Без названия';
     const body = (n.title ? text : text.slice(60)).slice(0,140) || 'Нет текста';
-    const fc = folderOf(n.folder), col = fc ? fc.color : COLORS[(n.id.charCodeAt(n.id.length-1) || 0) % COLORS.length];
-    const ch = (title.match(/[A-Za-zА-Яа-яЁё0-9]/) || ['•'])[0].toUpperCase();
+    const col = avCol(n), ch = avCh(n);
     return `<div class="sw" data-id="${n.id}">${trash ? '' : `<button class="ua pin">${n.pin ? 'Открепить' : 'Закрепить'}</button><button class="ua del">Удалить</button>`}
       <button class="item note"><span class="av" style="background:${col}">${esc(ch)}</span><span class="mid">
         <span class="r1"><span class="t">${esc(title)}</span><span class="d">${fmt(n.ts)}</span></span>
@@ -415,11 +434,58 @@ function list(app){
 }
 
 /* ---------- editor: rows (text / heading / bullet / checklist) ---------- */
-const parse = x => x.split('\n').map(l =>
-  /^- \[[ x]\] /.test(l) ? { k:'c', d:l[3] === 'x', t:l.slice(6) } :
-  l.startsWith('# ') ? { k:'h', t:l.slice(2) } :
-  l.startsWith('• ') ? { k:'b', t:l.slice(2) } : { k:'p', t:l });
-const ser = bl => bl.map(b => b.k === 'c' ? '- [' + (b.d ? 'x' : ' ') + '] ' + b.t : b.k === 'h' ? '# ' + b.t : b.k === 'b' ? '• ' + b.t : b.t).join('\n');
+const parse = x => {
+  const o = [];
+  x.split('\n').forEach(l => {
+    if (/^\| .* \|$/.test(l)) { const r = l.slice(2,-2).split(' | '), p = o[o.length-1]; if (p && p.k === 't') p.r.push(r); else o.push({ k:'t', r:[r] }); }
+    else o.push(/^- \[[ x]\] /.test(l) ? { k:'c', d:l[3] === 'x', t:l.slice(6) } : l.startsWith('# ') ? { k:'h', t:l.slice(2) } : l.startsWith('• ') ? { k:'b', t:l.slice(2) } : { k:'p', t:l });
+  });
+  return o;
+};
+const ser = bl => bl.map(b => b.k === 't' ? b.r.map(r => '| ' + r.map(c => c.replace(/\|/g,'/').trim()).join(' | ') + ' |').join('\n') : b.k === 'c' ? '- [' + (b.d ? 'x' : ' ') + '] ' + b.t : b.k === 'h' ? '# ' + b.t : b.k === 'b' ? '• ' + b.t : b.t).join('\n');
+const I_SHARE = '<svg viewBox="0 0 24 24"><path d="M12 3v12M8 7l4-4 4 4M5 13v6a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-6"/></svg>';
+function shareText(n){
+  const ls_ = parse(n.text).map(b => b.k === 'c' ? (b.d ? '☑ ' : '☐ ') + b.t : b.k === 'b' ? '• ' + b.t : b.k === 't' ? b.r.map(r => r.join(' | ')).join('\n') : b.t);
+  return ((n.title ? n.title + '\n\n' : '') + ls_.join('\n')).trim().slice(0, 3800);
+}
+function shareNote(){
+  const t = shareText(cur); if (!t) return;
+  if (tg && tg.openTelegramLink) tg.openTelegramLink('https://t.me/share/url?url=&text=' + encodeURIComponent(t));
+  else if (navigator.share) navigator.share({ text:t }).catch(() => {});
+  else if (navigator.clipboard) navigator.clipboard.writeText(t);
+}
+function avatarSheet(){
+  const E = '📝 📌 💡 ⭐ ❤️ 🎯 📚 🎓 💼 🛒 🏠 ✈️ 🎁 💰 🍕 🏋️ 🎬 🎵 💻 📅 🔑 🌿 ☕ 🧠'.split(' ');
+  const sh = openShade(`<h3>Аватарка заметки</h3><div class="colors">${COLORS.map(c => `<button data-c="${c}" style="background:${c}" class="${c === avCol(cur) ? 'on' : ''}" aria-label="Цвет"></button>`).join('')}</div>
+    <div class="emo">${E.map(e => `<button data-e="${e}">${e}</button>`).join('')}</div>
+    <button class="btn" id="rs" style="background:rgba(128,128,128,.16);color:var(--text)">Сбросить</button>`);
+  sh.querySelectorAll('[data-c]').forEach(b => b.onclick = () => { cur.col = b.dataset.c; sh.querySelectorAll('[data-c]').forEach(x => x.classList.toggle('on', x === b)); hap(); sync(); });
+  sh.querySelectorAll('[data-e]').forEach(b => b.onclick = () => { cur.ico = b.dataset.e; hap(); sync(); sh.remove(); });
+  sh.querySelector('#rs').onclick = () => { cur.ico = ''; cur.col = ''; sync(); sh.remove(); };
+}
+function insertTable(){
+  const i = Math.min(fi, blocks.length-1), t = { k:'t', r:[['',''],['',''],['','']] };
+  if (blocks[i].k === 'p' && !blocks[i].t) blocks[i] = t; else blocks.splice(i+1, 0, t);
+  const ti = blocks.indexOf(t);
+  if (!blocks[ti+1] || blocks[ti+1].k === 't') blocks.splice(ti+1, 0, { k:'p', t:'' });
+  sync(); rb();
+  const f = $('#bl').querySelector('.row.t input'); if (f) f.focus();
+}
+function bindTable(r, i, b){
+  r.querySelectorAll('input').forEach(inp => {
+    const y = +inp.dataset.y, x = +inp.dataset.x;
+    inp.onfocus = () => { fi = i; marks(); };
+    inp.oninput = () => { b.r[y][x] = inp.value; sync(); };
+    inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); const nx = r.querySelector(`input[data-y="${y+1}"][data-x="${x}"]`); if (nx) nx.focus(); else inp.blur(); } };
+  });
+  r.querySelector('.tm').onclick = () => sheet('Таблица', [
+    { label:'Добавить строку', fn:() => { b.r.push(b.r[0].map(() => '')); sync(); rb(); } },
+    { label:'Добавить столбец', fn:() => { b.r.forEach(w => w.push('')); sync(); rb(); } },
+    { label:'Удалить последнюю строку', fn:() => { if (b.r.length > 1) { b.r.pop(); sync(); rb(); } } },
+    { label:'Удалить последний столбец', fn:() => { if (b.r[0].length > 1) { b.r.forEach(w => w.pop()); sync(); rb(); } } },
+    { label:'Удалить таблицу', danger:true, fn:() => { blocks.splice(i, 1); if (!blocks.length) blocks.push({ k:'p', t:'' }); sync(); rb(); } }
+  ]);
+}
 
 function newNote(folder, from){
   const n = { id: uid(), folder, title:'', text:'', ts: Date.now(), pin:false, del:0 };
@@ -435,14 +501,16 @@ function editor(app){
   app.innerHTML = `
     <div class="editor">
       <div class="bar">${BACK}<span style="flex:1"></span>
-        <button class="ib ${cur.pin ? 'on' : ''}" id="pn" aria-label="Закрепить">${I_PIN}</button><button class="ib" id="dl" aria-label="Удалить">${I_TRASH}</button></div>
+        <button class="ib ${cur.pin ? 'on' : ''}" id="pn" aria-label="Закрепить">${I_PIN}</button><button class="ib" id="sh" aria-label="Отправить в чат">${I_SHARE}</button><button class="ib" id="dl" aria-label="Удалить">${I_TRASH}</button></div>
       <button class="chip" id="mv"><svg viewBox="0 0 24 24">${SVG_FOLDER.replace(/<\/?svg[^>]*>/g,'')}</svg><span>${f ? esc(f.name) : 'Без папки'}</span></button>
-      <input id="ti" placeholder="Название" maxlength="200" value="${esc(cur.title)}">
+      <div class="trow"><button class="av big" id="av" aria-label="Аватарка" style="background:${avCol(cur)}">${esc(avCh(cur))}</button><input id="ti" placeholder="Название" maxlength="200" value="${esc(cur.title)}"></div>
       <div id="bl"></div><div id="tail"></div><div class="count" id="cn"></div>
     </div>
-    <div class="tools" id="tools"><button data-k="h">Заголовок</button><button data-k="c">Чек-лист</button><button data-k="b">Список</button></div>`;
+    <div class="tools" id="tools"><button data-k="h">Заголовок</button><button data-k="c">Чек-лист</button><button data-k="b">Список</button><button data-k="t">Таблица</button></div>`;
   const ti = $('#ti');
   $('#bk').onclick = back;
+  $('#av').onclick = avatarSheet;
+  $('#sh').onclick = shareNote;
   ti.oninput = sync;
   ti.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); rb(0, 0); } };
   $('#tail').onclick = () => {
@@ -453,7 +521,9 @@ function editor(app){
   $('#tools').querySelectorAll('button').forEach(b => {
     b.onpointerdown = e => e.preventDefault();
     b.onclick = () => {
+      if (b.dataset.k === 't') return insertTable();
       const i = Math.min(fi, blocks.length-1), ta = $('#bl').querySelectorAll('textarea')[i], p = ta ? ta.selectionStart : 0;
+      if (blocks[i].k === 't') return;
       blocks[i].k = blocks[i].k === b.dataset.k ? 'p' : b.dataset.k; hap(); sync(); rb(i, p);
     };
   });
@@ -466,9 +536,10 @@ function editor(app){
   rb();
 }
 function rb(focus, pos){
-  $('#bl').innerHTML = blocks.map((b,i) => `<div class="row ${b.k}${b.k === 'c' && b.d ? ' done' : ''}" data-i="${i}">${b.k === 'c' ? `<button class="cb ${b.d ? 'on' : ''}" aria-label="Отметить"></button>` : b.k === 'b' ? '<span class="dot">•</span>' : ''}<textarea rows="1" placeholder="${blocks.length === 1 ? 'Текст заметки' : ''}">${esc(b.t)}</textarea></div>`).join('');
+  $('#bl').innerHTML = blocks.map((b,i) => b.k === 't' ? `<div class="row t" data-i="${i}"><div class="tw"><table>${b.r.map((w,y) => `<tr>${w.map((c,x) => `<td><input data-y="${y}" data-x="${x}" value="${esc(c)}"></td>`).join('')}</tr>`).join('')}</table></div><button class="ib tm" aria-label="Таблица"><svg viewBox="0 0 24 24" style="fill:currentColor;stroke:none"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg></button></div>` : `<div class="row ${b.k}${b.k === 'c' && b.d ? ' done' : ''}" data-i="${i}">${b.k === 'c' ? `<button class="cb ${b.d ? 'on' : ''}" aria-label="Отметить"></button>` : b.k === 'b' ? '<span class="dot">•</span>' : ''}<textarea rows="1" placeholder="${blocks.length === 1 ? 'Текст заметки' : ''}">${esc(b.t)}</textarea></div>`).join('');
   $('#bl').querySelectorAll('.row').forEach(r => {
     const i = +r.dataset.i, ta = r.querySelector('textarea'), b = blocks[i];
+    if (b.k === 't') return bindTable(r, i, b);
     const fit = () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; };
     fit();
     ta.onfocus = () => { fi = i; marks(); };
@@ -488,7 +559,7 @@ function rb(focus, pos){
         blocks.splice(i+1, 0, { k: b.k === 'h' ? 'p' : b.k, t:rest, d:false }); sync(); rb(i+1, 0);
       } else if (e.key === 'Backspace' && ta.selectionStart === 0 && ta.selectionEnd === 0) {
         if (b.k !== 'p') { e.preventDefault(); b.k = 'p'; sync(); rb(i, 0); }
-        else if (i > 0) { e.preventDefault(); const pv = blocks[i-1], l = pv.t.length; pv.t += b.t; blocks.splice(i, 1); sync(); rb(i-1, l); }
+        else if (i > 0 && blocks[i-1].k !== 't') { e.preventDefault(); const pv = blocks[i-1], l = pv.t.length; pv.t += b.t; blocks.splice(i, 1); sync(); rb(i-1, l); }
       }
     };
     const cb = r.querySelector('.cb');
@@ -508,9 +579,10 @@ function sync(){
   let x = ser(blocks), cut = false;
   if (x.length > MAX) {
     const b = blocks[Math.min(fi, blocks.length-1)];
-    b.t = b.t.slice(0, Math.max(0, b.t.length - (x.length - MAX))); x = ser(blocks); cut = true;
+    if (b.t != null) { b.t = b.t.slice(0, Math.max(0, b.t.length - (x.length - MAX))); x = ser(blocks); cut = true; }
   }
   cur.text = x; cur.title = $('#ti').value; cur.ts = Date.now();
+  const av = $('#av'); if (av) { av.textContent = avCh(cur); av.style.background = avCol(cur); }
   $('#cn').textContent = x.length > MAX - 500 ? x.length + ' / ' + MAX : '';
   ls.set('n_'+cur.id, noteJson(cur));
   clearTimeout(timer); timer = setTimeout(persist, 700);
